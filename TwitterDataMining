@@ -1,272 +1,755 @@
-
-# Git hub repository for code
-https://github.com/Niranjan41288/Mining_TwitterData.git
-
-Abstract : 
-
-  As we all know Twitter is a popular social network site where we can post small message called tweets. Users share there thoughts, links and pictures, journalists comment on live events, 
-companies promote products and engage with customers. so there’s a lot of data is available to analyse and get some useful information.
-
- I collected tweets of European football league as league has many matches played so a lot of tweets available.
- 
-I tried to 
-
-a) make the Predictions about the score on behalf of the fans
-b) do some sentiment analysis to find out how team particular team is doing.
-c) Information that can’t be retrieved directly from statistics, such as injuries.
-
-So using the twitter we can analyze the tweets during the big leagues or tournaments to keep track of team performance and also make some useful prediction. 
-
-
-
-
-
-
-# Import all required libraries
-
-import json # for json data
-import pymongo # To insert and fetch the data from mongo database
-import tweepy # To fetch the tweets from twitter
-import vincent # For plotting the data
-import nltk # For natural language processing
-from nltk.tokenize import word_tokenize # for tokenize the tweets and to count the term frequency
-import pandas # this is most important library to convert into the dataframes for easy accesss 
-#from elasticsearch import Elasticsearch
-
-#from flask import Flask
-#app = Flask(__name__)
-
-#@app.route("/")
-#def main():
-#    return "Welcome!"
-
-
-consumer_key = 'consumer_key '
-consumer_secret = 'consumer_secret '
-
-access_key = 'access_key '
-access_secret = 'access_secret'
-
-auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
-auth.set_access_token(access_key, access_secret)
-api = tweepy.API(auth)
-
-print('jjjjjjj')
-class CustomStreamListener(tweepy.StreamListener):
-    def __init__(self, api):
-        self.api = api
-        super(tweepy.StreamListener, self).__init__()
-
-        self.db = pymongo.MongoClient().test
-
-    def on_data(self, tweet):
-        self.db.BPL.insert(json.loads(tweet)) # insert the tweers into the mongodb
-
-    def on_error(self, status_code):
-        return True # Don't kill the stream
-
-    def on_timeout(self):
-        return True # Don't kill the stream
-
-
-sapi = tweepy.streaming.Stream(auth, CustomStreamListener(api))
-sapi.filter(track=['#BPL'])
-
-# Import all required libraries
-import json # for json data
-import pymongo # To insert and fetch the data from mongo database
-import tweepy # To fetch the tweets from twitter
-import vincent # For plotting the data
-import nltk
-from nltk.tokenize import word_tokenize # for tokenize the tweets and to count the term frequency
-import pandas # this is most important library to convert into the dataframes for easy accesss
-
-
-db = pymongo.MongoClient().test
-
-import re # remove the all hashtags and the common symbols to get the more meaningfull data
- 
-emoticons_str = r"""
-    (?:
-        [:=;] # Eyes
-        [oO\-]? # Nose (optional)
-        [D\)\]\(\]/\\OpP] # Mouth
-    )"""
- 
-regex_str = [
-    emoticons_str,
-    r'<[^>]+>', # HTML tags
-    r'(?:@[\w_]+)', # @-mentions
-    r"(?:\#+[\w_]+[\w\'_\-]*[\w_]+)", # hash-tags
-    r'http[s]?://(?:[a-z]|[0-9]|[$-_@.&+]|[!*\(\),]|(?:%[0-9a-f][0-9a-f]))+', # URLs
- 
-    r'(?:(?:\d+,?)+(?:\.?\d+)?)', # numbers
-    r"(?:[a-z][a-z'\-_]+[a-z])", # words with - and '
-    r'(?:[\w_]+)', # other words
-    r'(?:\S)' # anything else
-]
-    
-tokens_re = re.compile(r'('+'|'.join(regex_str)+')', re.VERBOSE | re.IGNORECASE)
-emoticon_re = re.compile(r'^'+emoticons_str+'$', re.VERBOSE | re.IGNORECASE)
- 
-def tokenize(s):
-    return tokens_re.findall(s)
- 
-def preprocess(s, lowercase=False):
-    tokens = tokenize(s)
-    if lowercase:
-        tokens = [token if emoticon_re.search(token) else token.lower() for token in tokens]
-    return tokens
-
-
-from nltk.corpus import stopwords
-import string
-
-# Generally there are so many stop words in english language. They are very helpful to make sense of the tweets but 
-# they are not useful to get any insights from the data so its better that we can get rid of the comman english stop words.
-
-punctuation = list(string.punctuation)
-stop = stopwords.words('english') + punctuation + ['rt', 'via']
-
-
-tweets = db.BPL.find()
-
-terms_stop = []
-
-# terms_stop = [t for t in preprocess(line['text']) for line in tweets if t not in stop]
-
-#terms_stop = [term for line in tweets for term in preprocess(line['text']) if term not in stop]
-
-terms_stop = [term for line in tweets for term in preprocess(line['text']) if term not in stop and 
-              not term.startswith(('#', '@'))]
-# make the plot
-
-from nltk.book import *
-freq = FreqDist(terms_stop)
-
-
-# Time Series Plot
-
-import vincent
-
-vincent.core.initialize_notebook() # This is for integration of vincent with Ipython notebook
-
-word_freq = freq.most_common(20)
-labels, freq = zip(*word_freq)
-data = {'data': freq, 'x': labels}
-bar = vincent.Bar(data, iter_idx='x')
-bar.axis_titles(x='Terms', y='Freq')
-bar.display()
-
-
-
-tweets = db.BPL.find()
-
-dates_football = []
-
-term_hash = []
-
-        
-term_hash = [term for line in tweets for term in preprocess(line['text']) if term.startswith(('#'))]
- 
-dates_football = [line['created_at'] for line in tweets for term in preprocess(line['text']) if '#Football' in term_hash ]
-
-
-# a list of "1" to count the hashtags
-ones = [1]*len(dates_football)
-# the index of the series
-idx = pandas.DatetimeIndex(dates_football)
-# the actual series (at series of 1s for the moment)
-football = pandas.Series(ones, index=idx)
- 
-# Resampling / bucketing
-football = football.resample('1Min', how='sum').fillna(0)
-
-
-import vincent
-vincent.core.initialize_notebook()
-Time_chart = vincent.Line(football)
-Time_chart.axis_titles(x='Time', y='Freq')
-Time_chart.display()
-
-
-# Do sentiment analysis
-# import sentiment_mod as senti
-from textblob import TextBlob
-import pandas as pd
-#from elasticsearch import Elasticsearch
-
-
-# create instance of elasticsearch
-#es = Elasticsearch()
-
-tweets = db.BPL.find()
-cursor = db.BPL.find()
-
-tweet_fields = ['text']
-tweet_sentiment = ['sentiment']
-
-tweet_list = []
-
-for line in tweets:
-    tweet = TextBlob(line['text'])
-    #print(tweet.sentiment.polarity)
-    if tweet.sentiment.polarity < 0:
-        sentiment = "negative"
-    elif tweet.sentiment.polarity == 0:
-        sentiment = "neutral"
-    else:
-        sentiment = "positive"
-        
-    tweet_list.append(sentiment)
-    #df1 = concat(df1,df1([{'tweet' : line['text'], 'sentiment' : sentiment }]))
-
-    
-#result = pd.DataFrame(tweet, columns=tweet_fields)
-
-#l = tweets['text']
-t1 = pd.DataFrame(list(cursor), columns=tweet_fields)
-t2 = pd.DataFrame(list(tweet_list), columns=tweet_sentiment)
-
-frames = [t1,t2]
-
-result = pd.concat(frames,axis = 1 )
-
-result[:20]
-
-
-# Plot the sentiments
-
-
-%matplotlib inline
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from matplotlib import style
-import time
-
-
-style.use("ggplot")
-
-
-#fig = plt.figure()
-#ax1 = fig.add(subplot(1,1,1))
-
-
-xar = []
-yar = []
-
-x = 0
-y = 0
-
-for l in result['sentiment']:
-    x +=1
-    if "positive" in l:
-        y += 1
-    elif "negative" in l:
-        y -= 1
-        
-    xar.append(x)
-    yar.append(y)
-
-
-plt.plot(xar,yar)
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "# Import all required libraries\n",
+    "import json # for json data\n",
+    "import pymongo # To insert and fetch the data from mongo database\n",
+    "import tweepy # To fetch the tweets from twitter\n",
+    "import vincent # For plotting the data\n",
+    "import nltk\n",
+    "from nltk.tokenize import word_tokenize # for tokenize the tweets and to count the term frequency\n",
+    "import pandas # this is most important library to convert into the dataframes for easy accesss \n",
+    "#from elasticsearch import Elasticsearch\n",
+    "\n",
+    "#from flask import Flask\n",
+    "#app = Flask(__name__)\n",
+    "\n",
+    "#@app.route(\"/\")\n",
+    "#def main():\n",
+    "#    return \"Welcome!\"\n",
+    "\n",
+    "\n",
+    "consumer_key = 'tCP4dMWj2SIhjERvFX9bDDf66'\n",
+    "consumer_secret = 'OU5clHYyE44hwP1EU1kQwtNJQVzWrgA31NfCXvXYGcT0UVyeOg'\n",
+    "\n",
+    "access_key = '2912687866-ajwlFr1Qjlr9fAgo0C9e9lmEQBsqMC42iIYdNnc'\n",
+    "access_secret = 'RboIkd71nmKFH0ql9E7xXMeRuK4c7gXcxajnCmHdp4VtC'\n",
+    "\n",
+    "auth = tweepy.OAuthHandler(consumer_key, consumer_secret)\n",
+    "auth.set_access_token(access_key, access_secret)\n",
+    "api = tweepy.API(auth)\n",
+    "\n",
+    "print('jjjjjjj')\n",
+    "class CustomStreamListener(tweepy.StreamListener):\n",
+    "    def __init__(self, api):\n",
+    "        self.api = api\n",
+    "        super(tweepy.StreamListener, self).__init__()\n",
+    "\n",
+    "        self.db = pymongo.MongoClient().test\n",
+    "\n",
+    "    def on_data(self, tweet):\n",
+    "        self.db.BPL.insert(json.loads(tweet)) # insert the tweers into the mongodb\n",
+    "\n",
+    "    def on_error(self, status_code):\n",
+    "        return True # Don't kill the stream\n",
+    "\n",
+    "    def on_timeout(self):\n",
+    "        return True # Don't kill the stream\n",
+    "\n",
+    "\n",
+    "sapi = tweepy.streaming.Stream(auth, CustomStreamListener(api))\n",
+    "sapi.filter(track=['#BPL'])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "# Import all required libraries\n",
+    "import json # for json data\n",
+    "import pymongo # To insert and fetch the data from mongo database\n",
+    "import tweepy # To fetch the tweets from twitter\n",
+    "import vincent # For plotting the data\n",
+    "import nltk\n",
+    "from nltk.tokenize import word_tokenize # for tokenize the tweets and to count the term frequency\n",
+    "import pandas # this is most important library to convert into the dataframes for easy accesss\n",
+    "\n",
+    "\n",
+    "db = pymongo.MongoClient().test"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "import re # remove the all hashtags and the common symbols to get the more meaningfull data\n",
+    " \n",
+    "emoticons_str = r\"\"\"\n",
+    "    (?:\n",
+    "        [:=;] # Eyes\n",
+    "        [oO\\-]? # Nose (optional)\n",
+    "        [D\\)\\]\\(\\]/\\\\OpP] # Mouth\n",
+    "    )\"\"\"\n",
+    " \n",
+    "regex_str = [\n",
+    "    emoticons_str,\n",
+    "    r'<[^>]+>', # HTML tags\n",
+    "    r'(?:@[\\w_]+)', # @-mentions\n",
+    "    r\"(?:\\#+[\\w_]+[\\w\\'_\\-]*[\\w_]+)\", # hash-tags\n",
+    "    r'http[s]?://(?:[a-z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-f][0-9a-f]))+', # URLs\n",
+    " \n",
+    "    r'(?:(?:\\d+,?)+(?:\\.?\\d+)?)', # numbers\n",
+    "    r\"(?:[a-z][a-z'\\-_]+[a-z])\", # words with - and '\n",
+    "    r'(?:[\\w_]+)', # other words\n",
+    "    r'(?:\\S)' # anything else\n",
+    "]\n",
+    "    \n",
+    "tokens_re = re.compile(r'('+'|'.join(regex_str)+')', re.VERBOSE | re.IGNORECASE)\n",
+    "emoticon_re = re.compile(r'^'+emoticons_str+'$', re.VERBOSE | re.IGNORECASE)\n",
+    " \n",
+    "def tokenize(s):\n",
+    "    return tokens_re.findall(s)\n",
+    " \n",
+    "def preprocess(s, lowercase=False):\n",
+    "    tokens = tokenize(s)\n",
+    "    if lowercase:\n",
+    "        tokens = [token if emoticon_re.search(token) else token.lower() for token in tokens]\n",
+    "    return tokens"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "from nltk.corpus import stopwords\n",
+    "import string\n",
+    "\n",
+    "# Generally there are so many stop words in english language. They are very helpful to make sense of the tweets but \n",
+    "# they are not useful to get any insights from the data so its better that we can get rid of the comman english stop words.\n",
+    "\n",
+    "punctuation = list(string.punctuation)\n",
+    "stop = stopwords.words('english') + punctuation + ['rt', 'via']"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": [
+    "tweets = db.BPL.find()\n",
+    "\n",
+    "terms_stop = []\n",
+    "\n",
+    "# terms_stop = [t for t in preprocess(line['text']) for line in tweets if t not in stop]\n",
+    "\n",
+    "#terms_stop = [term for line in tweets for term in preprocess(line['text']) if term not in stop]\n",
+    "\n",
+    "terms_stop = [term for line in tweets for term in preprocess(line['text']) if term not in stop and \n",
+    "              not term.startswith(('#', '@'))]"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "Concept:(http://vincent.readthedocs.org/en/latest/)\n",
+    "\n",
+    "The data capabilities of Python. The visualization capabilities of JavaScript.\n",
+    "Vincent allows you to build Vega specifications in a Pythonic way, and performs type-checking to help ensure that your specifications are correct. It also has a number of convenience chart-building methods that quickly turn Python data structures into Vega visualization grammar, enabling graphical exploration. It allows for quick iteration of visualization designs via getters and setters on grammar elements, and outputs the final visualization to JSON.\n",
+    "\n",
+    "Perhaps most importantly, Vincent has Pandas-Fu, and is built specifically to allow for quick plotting of DataFrames and Series."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "*** Introductory Examples for the NLTK Book ***\n",
+      "Loading text1, ..., text9 and sent1, ..., sent9\n",
+      "Type the name of the text or sentence to view it.\n",
+      "Type: 'texts()' or 'sents()' to list the materials.\n",
+      "text1: Moby Dick by Herman Melville 1851\n",
+      "text2: Sense and Sensibility by Jane Austen 1811\n",
+      "text3: The Book of Genesis\n",
+      "text4: Inaugural Address Corpus\n",
+      "text5: Chat Corpus\n",
+      "text6: Monty Python and the Holy Grail\n",
+      "text7: Wall Street Journal\n",
+      "text8: Personals Corpus\n",
+      "text9: The Man Who Was Thursday by G . K . Chesterton 1908\n"
+     ]
+    },
+    {
+     "data": {
+      "text/html": [
+       "\n",
+       "           <script>\n",
+       "               \n",
+       "                function vct_load_lib(url, callback){\n",
+       "                      if(typeof d3 !== 'undefined' &&\n",
+       "                         url === 'http://d3js.org/d3.v3.min.js'){\n",
+       "                        callback()\n",
+       "                      }\n",
+       "                      var s = document.createElement('script');\n",
+       "                      s.src = url;\n",
+       "                      s.async = true;\n",
+       "                      s.onreadystatechange = s.onload = callback;\n",
+       "                      s.onerror = function(){\n",
+       "                        console.warn(\"failed to load library \" + url);\n",
+       "                        };\n",
+       "                      document.getElementsByTagName(\"head\")[0].appendChild(s);\n",
+       "                };\n",
+       "                var vincent_event = new CustomEvent(\n",
+       "                  \"vincent_libs_loaded\",\n",
+       "                  {bubbles: true, cancelable: true}\n",
+       "                );\n",
+       "                \n",
+       "               function load_all_libs(){\n",
+       "                  console.log('Loading Vincent libs...')\n",
+       "                  vct_load_lib('http://d3js.org/d3.v3.min.js', function(){\n",
+       "                  vct_load_lib('http://d3js.org/d3.geo.projection.v0.min.js', function(){\n",
+       "                  vct_load_lib('http://wrobstory.github.io/d3-cloud/d3.layout.cloud.js', function(){\n",
+       "                  vct_load_lib('http://wrobstory.github.io/vega/vega.v1.3.3.js', function(){\n",
+       "                  window.dispatchEvent(vincent_event);\n",
+       "                  });\n",
+       "                  });\n",
+       "                  });\n",
+       "                  });\n",
+       "               };\n",
+       "               if(typeof define === \"function\" && define.amd){\n",
+       "                    if (window['d3'] === undefined ||\n",
+       "                        window['topojson'] === undefined){\n",
+       "                        require.config(\n",
+       "                            {paths: {\n",
+       "                              d3: 'http://d3js.org/d3.v3.min',\n",
+       "                              topojson: 'http://d3js.org/topojson.v1.min'\n",
+       "                              }\n",
+       "                            }\n",
+       "                          );\n",
+       "                        require([\"d3\"], function(d3){\n",
+       "                            console.log('Loading Vincent from require.js...')\n",
+       "                            window.d3 = d3;\n",
+       "                            require([\"topojson\"], function(topojson){\n",
+       "                                window.topojson = topojson;\n",
+       "                                load_all_libs();\n",
+       "                            });\n",
+       "                        });\n",
+       "                    } else {\n",
+       "                        load_all_libs();\n",
+       "                    };\n",
+       "               }else{\n",
+       "                    console.log('Require.js not found, loading manually...')\n",
+       "                    load_all_libs();\n",
+       "               };\n",
+       "\n",
+       "           </script>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div id=\"vis3bc9573f46304b7c83b60168011b3168\"></div>\n",
+       "<script>\n",
+       "   ( function() {\n",
+       "     var _do_plot = function() {\n",
+       "       if (typeof vg === 'undefined') {\n",
+       "         window.addEventListener('vincent_libs_loaded', _do_plot)\n",
+       "         return;\n",
+       "       }\n",
+       "       vg.parse.spec({\"axes\": [{\"scale\": \"x\", \"title\": \"Terms\", \"type\": \"x\"}, {\"scale\": \"y\", \"title\": \"Freq\", \"type\": \"y\"}], \"data\": [{\"name\": \"table\", \"values\": [{\"col\": \"data\", \"idx\": \"RT\", \"val\": 2508}, {\"col\": \"data\", \"idx\": \"\\u2026\", \"val\": 1902}, {\"col\": \"data\", \"idx\": \"matches\", \"val\": 996}, {\"col\": \"data\", \"idx\": \"Happy\", \"val\": 634}, {\"col\": \"data\", \"idx\": \"scoring\", \"val\": 521}, {\"col\": \"data\", \"idx\": \"Vassell\", \"val\": 511}, {\"col\": \"data\", \"idx\": \"losing\", \"val\": 508}, {\"col\": \"data\", \"idx\": \"2\", \"val\": 488}, {\"col\": \"data\", \"idx\": \"Carragher\", \"val\": 467}, {\"col\": \"data\", \"idx\": \"508\", \"val\": 465}, {\"col\": \"data\", \"idx\": \"League\", \"val\": 461}, {\"col\": \"data\", \"idx\": \"made\", \"val\": 430}, {\"col\": \"data\", \"idx\": \"retirement\", \"val\": 427}, {\"col\": \"data\", \"idx\": \"Vidic\", \"val\": 403}, {\"col\": \"data\", \"idx\": \"appearances\", \"val\": 386}, {\"col\": \"data\", \"idx\": \"He\", \"val\": 371}, {\"col\": \"data\", \"idx\": \"http\", \"val\": 368}, {\"col\": \"data\", \"idx\": \"Nemanja\", \"val\": 360}, {\"col\": \"data\", \"idx\": \"defender\", \"val\": 359}, {\"col\": \"data\", \"idx\": \"https://t.co\", \"val\": 323}]}, {\"name\": \"stats\", \"source\": \"table\", \"transform\": [{\"keys\": [\"data.idx\"], \"type\": \"facet\"}, {\"type\": \"stats\", \"value\": \"data.val\"}]}], \"height\": 500, \"legends\": [], \"marks\": [{\"from\": {\"data\": \"table\", \"transform\": [{\"keys\": [\"data.col\"], \"type\": \"facet\"}, {\"height\": \"data.val\", \"point\": \"data.idx\", \"type\": \"stack\"}]}, \"marks\": [{\"properties\": {\"enter\": {\"fill\": {\"field\": \"data.col\", \"scale\": \"color\"}, \"width\": {\"band\": true, \"offset\": -1, \"scale\": \"x\"}, \"x\": {\"field\": \"data.idx\", \"scale\": \"x\"}, \"y\": {\"field\": \"y\", \"scale\": \"y\"}, \"y2\": {\"field\": \"y2\", \"scale\": \"y\"}}}, \"type\": \"rect\"}], \"type\": \"group\"}], \"padding\": \"auto\", \"scales\": [{\"domain\": {\"data\": \"table\", \"field\": \"data.idx\"}, \"name\": \"x\", \"range\": \"width\", \"type\": \"ordinal\", \"zero\": false}, {\"domain\": {\"data\": \"stats\", \"field\": \"sum\"}, \"name\": \"y\", \"nice\": true, \"range\": \"height\"}, {\"domain\": {\"data\": \"table\", \"field\": \"data.col\"}, \"name\": \"color\", \"range\": \"category20\", \"type\": \"ordinal\"}], \"width\": 960}, function(chart) {\n",
+       "         chart({el: \"#vis3bc9573f46304b7c83b60168011b3168\"}).update();\n",
+       "       });\n",
+       "     };\n",
+       "     _do_plot();\n",
+       "   })();\n",
+       "</script>\n",
+       "<style>.vega canvas {width: 100%;}</style>\n",
+       "        "
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "from nltk.book import *\n",
+    "freq = FreqDist(terms_stop)\n",
+    "\n",
+    "import vincent\n",
+    "\n",
+    "vincent.core.initialize_notebook() # This is for integration of vincent with Ipython notebook\n",
+    "\n",
+    "word_freq = freq.most_common(20)\n",
+    "labels, freq = zip(*word_freq)\n",
+    "data = {'data': freq, 'x': labels}\n",
+    "bar = vincent.Bar(data, iter_idx='x')\n",
+    "bar.axis_titles(x='Terms', y='Freq')\n",
+    "bar.display()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [],
+   "source": [
+    "#import pandas \n",
+    "\n",
+    "tweets = db.BPL.find()\n",
+    "\n",
+    "dates_football = []\n",
+    "\n",
+    "term_hash = []\n",
+    "\n",
+    "        \n",
+    "term_hash = [term for line in tweets for term in preprocess(line['text']) if term.startswith(('#'))]\n",
+    " \n",
+    "dates_football = [line['created_at'] for line in tweets for term in preprocess(line['text']) if '#Football' in term_hash ]\n",
+    "\n",
+    "\n",
+    "# a list of \"1\" to count the hashtags\n",
+    "ones = [1]*len(dates_football)\n",
+    "# the index of the series\n",
+    "idx = pandas.DatetimeIndex(dates_football)\n",
+    "# the actual series (at series of 1s for the moment)\n",
+    "football = pandas.Series(ones, index=idx)\n",
+    " \n",
+    "# Resampling / bucketing\n",
+    "football = football.resample('1Min', how='sum').fillna(0)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "\n",
+       "           <script>\n",
+       "               \n",
+       "                function vct_load_lib(url, callback){\n",
+       "                      if(typeof d3 !== 'undefined' &&\n",
+       "                         url === 'http://d3js.org/d3.v3.min.js'){\n",
+       "                        callback()\n",
+       "                      }\n",
+       "                      var s = document.createElement('script');\n",
+       "                      s.src = url;\n",
+       "                      s.async = true;\n",
+       "                      s.onreadystatechange = s.onload = callback;\n",
+       "                      s.onerror = function(){\n",
+       "                        console.warn(\"failed to load library \" + url);\n",
+       "                        };\n",
+       "                      document.getElementsByTagName(\"head\")[0].appendChild(s);\n",
+       "                };\n",
+       "                var vincent_event = new CustomEvent(\n",
+       "                  \"vincent_libs_loaded\",\n",
+       "                  {bubbles: true, cancelable: true}\n",
+       "                );\n",
+       "                \n",
+       "               function load_all_libs(){\n",
+       "                  console.log('Loading Vincent libs...')\n",
+       "                  vct_load_lib('http://d3js.org/d3.v3.min.js', function(){\n",
+       "                  vct_load_lib('http://d3js.org/d3.geo.projection.v0.min.js', function(){\n",
+       "                  vct_load_lib('http://wrobstory.github.io/d3-cloud/d3.layout.cloud.js', function(){\n",
+       "                  vct_load_lib('http://wrobstory.github.io/vega/vega.v1.3.3.js', function(){\n",
+       "                  window.dispatchEvent(vincent_event);\n",
+       "                  });\n",
+       "                  });\n",
+       "                  });\n",
+       "                  });\n",
+       "               };\n",
+       "               if(typeof define === \"function\" && define.amd){\n",
+       "                    if (window['d3'] === undefined ||\n",
+       "                        window['topojson'] === undefined){\n",
+       "                        require.config(\n",
+       "                            {paths: {\n",
+       "                              d3: 'http://d3js.org/d3.v3.min',\n",
+       "                              topojson: 'http://d3js.org/topojson.v1.min'\n",
+       "                              }\n",
+       "                            }\n",
+       "                          );\n",
+       "                        require([\"d3\"], function(d3){\n",
+       "                            console.log('Loading Vincent from require.js...')\n",
+       "                            window.d3 = d3;\n",
+       "                            require([\"topojson\"], function(topojson){\n",
+       "                                window.topojson = topojson;\n",
+       "                                load_all_libs();\n",
+       "                            });\n",
+       "                        });\n",
+       "                    } else {\n",
+       "                        load_all_libs();\n",
+       "                    };\n",
+       "               }else{\n",
+       "                    console.log('Require.js not found, loading manually...')\n",
+       "                    load_all_libs();\n",
+       "               };\n",
+       "\n",
+       "           </script>"
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    },
+    {
+     "data": {
+      "text/html": [
+       "<div id=\"visbac15a4af30a4de0835446f74b922d75\"></div>\n",
+       "<script>\n",
+       "   ( function() {\n",
+       "     var _do_plot = function() {\n",
+       "       if (typeof vg === 'undefined') {\n",
+       "         window.addEventListener('vincent_libs_loaded', _do_plot)\n",
+       "         return;\n",
+       "       }\n",
+       "       vg.parse.spec({\"axes\": [{\"scale\": \"x\", \"title\": \"Time\", \"type\": \"x\"}, {\"scale\": \"y\", \"title\": \"Freq\", \"type\": \"y\"}], \"data\": [{\"name\": \"table\", \"values\": []}], \"height\": 500, \"legends\": [], \"marks\": [{\"from\": {\"data\": \"table\", \"transform\": [{\"keys\": [\"data.col\"], \"type\": \"facet\"}]}, \"marks\": [{\"properties\": {\"enter\": {\"stroke\": {\"field\": \"data.col\", \"scale\": \"color\"}, \"strokeWidth\": {\"value\": 2}, \"x\": {\"field\": \"data.idx\", \"scale\": \"x\"}, \"y\": {\"field\": \"data.val\", \"scale\": \"y\"}}}, \"type\": \"line\"}], \"type\": \"group\"}], \"padding\": \"auto\", \"scales\": [{\"domain\": {\"data\": \"table\", \"field\": \"data.idx\"}, \"name\": \"x\", \"range\": \"width\", \"type\": \"time\"}, {\"domain\": {\"data\": \"table\", \"field\": \"data.val\"}, \"name\": \"y\", \"nice\": true, \"range\": \"height\"}, {\"domain\": {\"data\": \"table\", \"field\": \"data.col\"}, \"name\": \"color\", \"range\": \"category20\", \"type\": \"ordinal\"}], \"width\": 960}, function(chart) {\n",
+       "         chart({el: \"#visbac15a4af30a4de0835446f74b922d75\"}).update();\n",
+       "       });\n",
+       "     };\n",
+       "     _do_plot();\n",
+       "   })();\n",
+       "</script>\n",
+       "<style>.vega canvas {width: 100%;}</style>\n",
+       "        "
+      ],
+      "text/plain": [
+       "<IPython.core.display.HTML object>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "import vincent\n",
+    "vincent.core.initialize_notebook()\n",
+    "Time_chart = vincent.Line(football)\n",
+    "Time_chart.axis_titles(x='Time', y='Freq')\n",
+    "Time_chart.display()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th></th>\n",
+       "      <th>text</th>\n",
+       "      <th>sentiment</th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>0</th>\n",
+       "      <td>CAPITAL ONE CUP: https://t.co/G6oXVuAvu1 3-1 E...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>1</th>\n",
+       "      <td>Can't believe Chelsea sold Ramires! Great play...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>2</th>\n",
+       "      <td>RT @premierleague: Adebayor's scoring record o...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>3</th>\n",
+       "      <td>El #LeicesterCity, lÃ­der en solitario de la #P...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>4</th>\n",
+       "      <td>RT @premierleague: .@Rami7oficial at @ChelseaF...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>5</th>\n",
+       "      <td>RT @premierleague: Adebayor's scoring record o...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>6</th>\n",
+       "      <td>RT @thfcnostalgia: Spurs have now won 14 point...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>7</th>\n",
+       "      <td>RT @MercaGol: Aston Villa y Lille pelean por h...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>8</th>\n",
+       "      <td>#PolarOpposites 2 #NY sports guys w/ a Nationa...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>9</th>\n",
+       "      <td>I love how my nephew absolutely loses his shit...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>10</th>\n",
+       "      <td>RT @premierleague: NAME THE SCORER Who netted ...</td>\n",
+       "      <td>negative</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>11</th>\n",
+       "      <td>'Get Jose Mourinho in - he wants to prove he's...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>12</th>\n",
+       "      <td>@MCFC @willy_caballero Gotta be the best keepe...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>13</th>\n",
+       "      <td>RT @premierleague: Referee appointments have b...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>14</th>\n",
+       "      <td>RT @avfcfeed: West Bromwich Albion v Aston Vil...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>15</th>\n",
+       "      <td>Giants? Maybe those bananas they handed out? ðŸ™ˆ...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>16</th>\n",
+       "      <td>Premier League Player's Transfers &amp;amp; Loans ...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>17</th>\n",
+       "      <td>#DiegoCosta, en plena forma con Guus #Hiddink ...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>18</th>\n",
+       "      <td>#BPL Van Gaal: Para Pemain Muda Akan Dapat Kes...</td>\n",
+       "      <td>positive</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>19</th>\n",
+       "      <td>'@E_Adebayor eyeing @didierdrogba's scoring re...</td>\n",
+       "      <td>neutral</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "                                                 text sentiment\n",
+       "0   CAPITAL ONE CUP: https://t.co/G6oXVuAvu1 3-1 E...   neutral\n",
+       "1   Can't believe Chelsea sold Ramires! Great play...  positive\n",
+       "2   RT @premierleague: Adebayor's scoring record o...  positive\n",
+       "3   El #LeicesterCity, lÃ­der en solitario de la #P...   neutral\n",
+       "4   RT @premierleague: .@Rami7oficial at @ChelseaF...   neutral\n",
+       "5   RT @premierleague: Adebayor's scoring record o...  positive\n",
+       "6   RT @thfcnostalgia: Spurs have now won 14 point...  positive\n",
+       "7   RT @MercaGol: Aston Villa y Lille pelean por h...   neutral\n",
+       "8   #PolarOpposites 2 #NY sports guys w/ a Nationa...   neutral\n",
+       "9   I love how my nephew absolutely loses his shit...  positive\n",
+       "10  RT @premierleague: NAME THE SCORER Who netted ...  negative\n",
+       "11  'Get Jose Mourinho in - he wants to prove he's...  positive\n",
+       "12  @MCFC @willy_caballero Gotta be the best keepe...  positive\n",
+       "13  RT @premierleague: Referee appointments have b...  positive\n",
+       "14  RT @avfcfeed: West Bromwich Albion v Aston Vil...   neutral\n",
+       "15  Giants? Maybe those bananas they handed out? ðŸ™ˆ...   neutral\n",
+       "16  Premier League Player's Transfers &amp; Loans ...   neutral\n",
+       "17  #DiegoCosta, en plena forma con Guus #Hiddink ...   neutral\n",
+       "18  #BPL Van Gaal: Para Pemain Muda Akan Dapat Kes...  positive\n",
+       "19  '@E_Adebayor eyeing @didierdrogba's scoring re...   neutral"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "# import sentiment_mod as senti\n",
+    "from textblob import TextBlob\n",
+    "import pandas as pd\n",
+    "#from elasticsearch import Elasticsearch\n",
+    "\n",
+    "\n",
+    "# create instance of elasticsearch\n",
+    "#es = Elasticsearch()\n",
+    "\n",
+    "tweets = db.BPL.find()\n",
+    "cursor = db.BPL.find()\n",
+    "\n",
+    "tweet_fields = ['text']\n",
+    "tweet_sentiment = ['sentiment']\n",
+    "\n",
+    "tweet_list = []\n",
+    "\n",
+    "for line in tweets:\n",
+    "    tweet = TextBlob(line['text'])\n",
+    "    #print(tweet.sentiment.polarity)\n",
+    "    if tweet.sentiment.polarity < 0:\n",
+    "        sentiment = \"negative\"\n",
+    "    elif tweet.sentiment.polarity == 0:\n",
+    "        sentiment = \"neutral\"\n",
+    "    else:\n",
+    "        sentiment = \"positive\"\n",
+    "        \n",
+    "    tweet_list.append(sentiment)\n",
+    "    #df1 = concat(df1,df1([{'tweet' : line['text'], 'sentiment' : sentiment }]))\n",
+    "\n",
+    "    \n",
+    "#result = pd.DataFrame(tweet, columns=tweet_fields)\n",
+    "\n",
+    "#l = tweets['text']\n",
+    "t1 = pd.DataFrame(list(cursor), columns=tweet_fields)\n",
+    "t2 = pd.DataFrame(list(tweet_list), columns=tweet_sentiment)\n",
+    "\n",
+    "frames = [t1,t2]\n",
+    "\n",
+    "result = pd.concat(frames,axis = 1 )\n",
+    "\n",
+    "result[:20]\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {
+    "collapsed": false
+   },
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "[<matplotlib.lines.Line2D at 0x26e1dfa76d8>]"
+      ]
+     },
+     "execution_count": 10,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\nRU5ErkJggg==\n",
+      "text/plain": [
+       "<matplotlib.figure.Figure at 0x26e1fb33908>"
+      ]
+     },
+     "metadata": {},
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "# Plot the sentiments\n",
+    "\n",
+    "\n",
+    "%matplotlib inline\n",
+    "import matplotlib.pyplot as plt\n",
+    "import matplotlib.animation as animation\n",
+    "from matplotlib import style\n",
+    "import time\n",
+    "\n",
+    "\n",
+    "style.use(\"ggplot\")\n",
+    "\n",
+    "\n",
+    "#fig = plt.figure()\n",
+    "#ax1 = fig.add(subplot(1,1,1))\n",
+    "\n",
+    "\n",
+    "xar = []\n",
+    "yar = []\n",
+    "\n",
+    "x = 0\n",
+    "y = 0\n",
+    "\n",
+    "for l in result['sentiment']:\n",
+    "    x +=1\n",
+    "    if \"positive\" in l:\n",
+    "        y += 1\n",
+    "    elif \"negative\" in l:\n",
+    "        y -= 1\n",
+    "        \n",
+    "    xar.append(x)\n",
+    "    yar.append(y)\n",
+    "\n",
+    "\n",
+    "plt.plot(xar,yar)\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.5.1"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 0
+}
